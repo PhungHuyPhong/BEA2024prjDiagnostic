@@ -207,20 +207,6 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles EXTI line0 interrupt.
-  */
-void EXTI0_IRQHandler(void)
-{
-  /* USER CODE BEGIN EXTI0_IRQn 0 */
-
-  /* USER CODE END EXTI0_IRQn 0 */
-  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
-  /* USER CODE BEGIN EXTI0_IRQn 1 */
-
-  /* USER CODE END EXTI0_IRQn 1 */
-}
-
-/**
   * @brief This function handles CAN1 RX0 interrupts.
   */
 void CAN1_RX0_IRQHandler(void)
@@ -250,18 +236,17 @@ void USART3_IRQHandler(void)
 }
 
 /**
-  * @brief This function handles CAN2 RX0 interrupts.
+  * @brief This function handles CAN2 RX1 interrupt.
   */
-void CAN2_RX0_IRQHandler(void)
+void CAN2_RX1_IRQHandler(void)
 {
-  /* USER CODE BEGIN CAN2_RX0_IRQn 0 */
-	uint8_t NumByteSend;
-  /* USER CODE END CAN2_RX0_IRQn 0 */
-  HAL_CAN_IRQHandler(&hcan2);
-  /* USER CODE BEGIN CAN2_RX0_IRQn 1 */
-	HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO0, &CAN2_pHeaderRx, CAN2_DATA_RX);
+  /* USER CODE BEGIN CAN2_RX1_IRQn 0 */
 
-  /* USER CODE END CAN2_RX0_IRQn 1 */
+  /* USER CODE END CAN2_RX1_IRQn 0 */
+  HAL_CAN_IRQHandler(&hcan2);
+  /* USER CODE BEGIN CAN2_RX1_IRQn 1 */
+
+  /* USER CODE END CAN2_RX1_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

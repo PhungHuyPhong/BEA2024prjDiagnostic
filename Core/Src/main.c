@@ -87,10 +87,28 @@ void MX_CAN1_Setup();
 void MX_CAN2_Setup();
 void USART3_SendString(uint8_t *ch);
 void PrintCANLog(uint16_t CANID, uint8_t * CAN_Frame);
-void SID_22_Practice();
-void SID_2E_Practice();
-void SID_27_Practice();
 void delay(uint16_t delay);
+void setNRC(uint8_t sid, uint8_t nrc){
+	CAN2_DATA_TX[0] = 0x03;
+	CAN2_DATA_TX[1] = 0x7F;
+	CAN2_DATA_TX[2] = sid;
+	CAN2_DATA_TX[3] = nrc;
+	CAN2_DATA_TX[5] = 0x55;
+	CAN2_DATA_TX[6] = 0x55;
+	CAN2_DATA_TX[7] = 0x55;
+}
+void CAN2_TX(){
+
+}
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_pHeaderRx, CAN1_DATA_RX);
+	char buffer3[9] = "Response: ";
+	USART3_SendString((unsigned char *)buffer3);
+	PrintCANLog(0x7A2, CAN1_DATA_RX);
+}
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &CAN2_pHeaderRx, CAN2_DATA_RX);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -141,23 +159,21 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // Example Function to print can message via uart
-  PrintCANLog(CAN1_pHeader.StdId, &CAN1_DATA_TX[0]);
   while (1)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-
-    if(!BtnU) /*IG OFF->ON stimulation*/
-    {
-      delay(20);
-      USART3_SendString((uint8_t *)"IG OFF ");
-      while(!BtnU);
-      MX_CAN1_Setup();
-      MX_CAN2_Setup();
-      USART3_SendString((uint8_t *)"-> IG ON \n");
-      delay(20);
-    }
+    /* USER CODE BEGIN 3 *
+    //if(!BtnU) /*IG OFF->ON stimulation*/
+    //{
+      //delay(20);
+      //USART3_SendString((uint8_t *)"IG OFF ");
+     // while(!BtnU);
+     // MX_CAN1_Setup();
+     // MX_CAN2_Setup();
+     // USART3_SendString((uint8_t *)"-> IG ON \n");
+      //delay(20);
+    //}
   }
 
   memset(&REQ_BUFFER,0x00,4096);
@@ -189,7 +205,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 168;
+  RCC_OscInitStruct.PLL.PLLN = 64;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -203,10 +219,10 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV8;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -228,10 +244,10 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 21;
+  hcan1.Init.Prescaler = 1;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
-  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_12TQ;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_2TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
@@ -244,7 +260,10 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
-
+  CAN1_pHeader.StdId = 0x712;
+  CAN1_pHeader.DLC = 8;
+  CAN1_pHeader.IDE = CAN_ID_STD;
+  CAN1_pHeader.RTR = CAN_RTR_DATA;
   /* USER CODE END CAN1_Init 2 */
 
 }
@@ -265,10 +284,10 @@ static void MX_CAN2_Init(void)
 
   /* USER CODE END CAN2_Init 1 */
   hcan2.Instance = CAN2;
-  hcan2.Init.Prescaler = 21;
+  hcan2.Init.Prescaler = 1;
   hcan2.Init.Mode = CAN_MODE_NORMAL;
-  hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan2.Init.TimeSeg1 = CAN_BS1_12TQ;
+  hcan2.Init.SyncJumpWidth = CAN_SJW_2TQ;
+  hcan2.Init.TimeSeg1 = CAN_BS1_11TQ;
   hcan2.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan2.Init.TimeTriggeredMode = DISABLE;
   hcan2.Init.AutoBusOff = DISABLE;
@@ -281,7 +300,10 @@ static void MX_CAN2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN2_Init 2 */
-
+  CAN2_pHeader.StdId = 0x7A2;
+  CAN2_pHeader.DLC = 8;
+  CAN2_pHeader.IDE = CAN_ID_STD;
+  CAN2_pHeader.RTR = CAN_RTR_DATA;
   /* USER CODE END CAN2_Init 2 */
 
 }
@@ -355,10 +377,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 1, 0);
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
