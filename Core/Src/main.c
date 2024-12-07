@@ -50,30 +50,46 @@ uint8_t uart3_receive;
 
 CAN_HandleTypeDef hcan1;
 CAN_HandleTypeDef hcan2;
-CAN_TxHeaderTypeDef CAN1_pHeader;
-CAN_RxHeaderTypeDef CAN1_pHeaderRx;
+CAN_TxHeaderTypeDef CAN1_pHeader; //TX tester
+CAN_RxHeaderTypeDef CAN1_pHeaderRx; //RX tester
 CAN_FilterTypeDef CAN1_sFilterConfig;
-CAN_TxHeaderTypeDef CAN2_pHeader;
-CAN_RxHeaderTypeDef CAN2_pHeaderRx;
+CAN_TxHeaderTypeDef CAN2_pHeader; //TX ECU
+CAN_RxHeaderTypeDef CAN2_pHeaderRx; //RX ECU
 CAN_FilterTypeDef CAN2_sFilterConfig;
-uint32_t CAN1_pTxMailbox;
-uint32_t CAN2_pTxMailbox;
+uint32_t CAN1_pTxMailbox; // tester mailbox
+uint32_t CAN2_pTxMailbox; // ECU mailbox
 
 uint16_t NumBytesReq = 0;
 uint8_t  REQ_BUFFER  [4096];
 uint8_t  REQ_1BYTE_DATA;
+uint16_t tester_ID=0x712;
+uint16_t ECU_ID=0x7A2;
+uint16_t ECU_IDtmp;
+uint8_t check=0;
+uint8_t enb2E=0;
 
+//TX tester
 uint8_t CAN1_DATA_TX[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+// RX tester
 uint8_t CAN1_DATA_RX[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+// TX ECU
 uint8_t CAN2_DATA_TX[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+// RX ECU
 uint8_t CAN2_DATA_RX[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+
+uint8_t CAN2_STORE_SEED[8];
+
 
 uint16_t Num_Consecutive_Tester;
 uint8_t  Flg_Consecutive = 0;
 
+
 unsigned int TimeStamp;
+int fifo;
 // maximum characters send out via UART is 30
 char bufsend[30]="XXX: D1 D2 D3 D4 D5 D6 D7 D8  ";
+
+uint8_t MessageCounter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -88,32 +104,58 @@ void MX_CAN2_Setup();
 void USART3_SendString(uint8_t *ch);
 void PrintCANLog(uint16_t CANID, uint8_t * CAN_Frame);
 void delay(uint16_t delay);
-void setNRC(uint8_t sid, uint8_t nrc){
-	CAN2_DATA_TX[0] = 0x03;
-	CAN2_DATA_TX[1] = 0x7F;
-	CAN2_DATA_TX[2] = sid;
-	CAN2_DATA_TX[3] = nrc;
-	CAN2_DATA_TX[5] = 0x55;
-	CAN2_DATA_TX[6] = 0x55;
-	CAN2_DATA_TX[7] = 0x55;
-}
-void CAN2_TX(){
-
-}
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
-	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_pHeaderRx, CAN1_DATA_RX);
-	char buffer3[9] = "Response: ";
-	USART3_SendString((unsigned char *)buffer3);
-	PrintCANLog(0x7A2, CAN1_DATA_RX);
-}
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
-	HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &CAN2_pHeaderRx, CAN2_DATA_RX);
-}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan);
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
+void readFromTester(uint8_t* req_tester, uint16_t len, uint8_t* data_tx);
+void checkAndHandle_tester();
+void checkAndHandle_ECU();
 
+
+// void checkAndHandle_service22(); //tester
+// void checkAndHandle_service27(); //tester
+// void checkAndhandle_service2E();  //tester
+//
+//Service22
+ //Start service22
+void ReadDataByIdentifierRequestFrame(uint8_t data[]);
+void ReadDataByIdentifierResponseFrame(uint8_t data[]);
+void HandleSID22(); //ECU xá»­ lÃ­ SID22
+void HandleSID62(); //Tester xá»­ lÃ­ SID62
+
+//Service27
+
+void HandleSID27();
+void HandleSID67();
+uint8_t generate_seed();
+uint8_t* cal_key (uint8_t Tx_data[], uint8_t data[]);
+void securityAccessServiceSeedRequestFrame (uint8_t data[]);
+void securityAccessServiceSeedResponseFrame (uint8_t data[]);
+void securityAccessSendKeyRequestFrame(uint8_t Tx_data[], uint8_t data[]);
+void securityAccessSendKeyResponseFrame(uint8_t data[]);
+void SecurityAccessNegativeResponseMessage(uint8_t data[], uint8_t flag_NRC, uint8_t SID);
+uint8_t checkKey (uint8_t data[], uint8_t CAN2_STORE_SEED[] );
+
+//Service 2E
+
+void HandleSID2E();
+void HandleSID6E();
+void WriteDataByIdentifierResponseFrame(uint8_t data[]);
+void CAN1_Send();
+//Ham lay byte
+
+uint8_t get_PCI(uint8_t);
+uint8_t get_size(uint8_t);
+uint8_t get_SID(uint8_t data[]);
+uint16_t get_DID(uint8_t data[]);
+uint8_t get_sub_function(uint8_t data[]);
+uint8_t get_NRC(uint8_t data[]);
+
+
+//void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 /* USER CODE END 0 */
 
 /**
@@ -124,8 +166,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	uint16_t i,j = 0;
-	uint16_t Consecutive_Cntr = 0;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -153,39 +194,82 @@ int main(void)
   MX_CAN1_Setup();
   MX_CAN2_Setup();
   __HAL_UART_ENABLE_IT(&huart3, UART_IT_RXNE);
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   // Example Function to print can message via uart
-  while (1)
-  {
+while (1)
+{
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 *
-    //if(!BtnU) /*IG OFF->ON stimulation*/
-    //{
-      //delay(20);
-      //USART3_SendString((uint8_t *)"IG OFF ");
-     // while(!BtnU);
-     // MX_CAN1_Setup();
-     // MX_CAN2_Setup();
-     // USART3_SendString((uint8_t *)"-> IG ON \n");
-      //delay(20);
-    //}
+    /* USER CODE BEGIN 3 */
+  if(NumBytesReq!=0)
+    	{
+    		delay(100);
+    		readFromTester(REQ_BUFFER, NumBytesReq, CAN1_DATA_TX);
+    		CAN1_Send();
+    		delay(100);
+
+    		switch(REQ_BUFFER[0])
+    		{
+    		case 0x27:
+    //			SID_27_Practice();
+    			//Service27();
+    			checkAndHandle_ECU();
+    			checkAndHandle_tester();
+    			break;
+    		case 0x22:
+    			//Service22();
+    			checkAndHandle_ECU();
+    			checkAndHandle_tester();
+    			break;
+    		case 0x2E:
+    //			SID_2E_Practice();
+    			//Service2E();
+    			checkAndHandle_ECU();
+    			checkAndHandle_tester();
+    			break;
+    		default:
+    			USART3_SendString((uint8_t*)"Service not support");
+    			break;
+    		}
+    		PrintCANLog(CAN1_pHeaderRx.StdId,CAN1_DATA_RX);
+    		NumBytesReq=0;
+    	}
+  if(!BtnU) /*IG OFF->ON stimulation*/
+  {
+    delay(20);
+    USART3_SendString((uint8_t *)"IG OFF ");
+    ECU_ID=ECU_IDtmp;
+    MX_CAN2_Init();
+    MX_CAN1_Init();
+    MX_CAN2_Setup();
+    MX_CAN1_Setup();
+    while(!BtnU);
+    USART3_SendString((uint8_t *)"-> IG ON \n");
+    delay(20);
   }
 
-  memset(&REQ_BUFFER,0x00,4096);
-  NumBytesReq = 0;
-
-  /* USER CODE END 3 */
 }
+}
+  /* USER CODE END 3 */
+
 
 /**
   * @brief System Clock Configuration
   * @retval None
   */
+void CAN1_Send()
+{
+	 PrintCANLog(CAN1_pHeader.StdId, CAN1_DATA_TX);
+	  if(HAL_CAN_AddTxMessage(&hcan1, &CAN1_pHeader, CAN1_DATA_TX, &CAN1_pTxMailbox) != HAL_OK)
+		{
+		 Error_Handler();
+		}
+
+}
+
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -237,6 +321,10 @@ static void MX_CAN1_Init(void)
 {
 
   /* USER CODE BEGIN CAN1_Init 0 */
+  CAN1_pHeader.DLC = 8;
+  CAN1_pHeader.IDE = CAN_ID_STD;
+  CAN1_pHeader.RTR = CAN_RTR_DATA;
+  CAN1_pHeader.StdId = tester_ID;
 
   /* USER CODE END CAN1_Init 0 */
 
@@ -244,9 +332,9 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 1;
+  hcan1.Init.Prescaler = 16;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
-  hcan1.Init.SyncJumpWidth = CAN_SJW_2TQ;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
@@ -260,10 +348,16 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
-  CAN1_pHeader.StdId = 0x712;
-  CAN1_pHeader.DLC = 8;
-  CAN1_pHeader.IDE = CAN_ID_STD;
-  CAN1_pHeader.RTR = CAN_RTR_DATA;
+  CAN1_sFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
+  CAN1_sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  CAN1_sFilterConfig.SlaveStartFilterBank = 13;
+  CAN1_sFilterConfig.FilterBank = 8;
+  CAN1_sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  CAN1_sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+  CAN1_sFilterConfig.FilterIdHigh = ECU_ID << 5;
+  CAN1_sFilterConfig.FilterIdLow = 0;
+  CAN1_sFilterConfig.FilterMaskIdHigh = ECU_ID << 5;
+  CAN1_sFilterConfig.FilterMaskIdLow = 0;
   /* USER CODE END CAN1_Init 2 */
 
 }
@@ -277,6 +371,10 @@ static void MX_CAN2_Init(void)
 {
 
   /* USER CODE BEGIN CAN2_Init 0 */
+  CAN2_pHeader.DLC = 8;
+  CAN2_pHeader.IDE = CAN_ID_STD;
+  CAN2_pHeader.RTR = CAN_RTR_DATA;
+  CAN2_pHeader.StdId = ECU_ID;
 
   /* USER CODE END CAN2_Init 0 */
 
@@ -284,9 +382,9 @@ static void MX_CAN2_Init(void)
 
   /* USER CODE END CAN2_Init 1 */
   hcan2.Instance = CAN2;
-  hcan2.Init.Prescaler = 1;
+  hcan2.Init.Prescaler = 16;
   hcan2.Init.Mode = CAN_MODE_NORMAL;
-  hcan2.Init.SyncJumpWidth = CAN_SJW_2TQ;
+  hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan2.Init.TimeSeg1 = CAN_BS1_11TQ;
   hcan2.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan2.Init.TimeTriggeredMode = DISABLE;
@@ -300,10 +398,16 @@ static void MX_CAN2_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN2_Init 2 */
-  CAN2_pHeader.StdId = 0x7A2;
-  CAN2_pHeader.DLC = 8;
-  CAN2_pHeader.IDE = CAN_ID_STD;
-  CAN2_pHeader.RTR = CAN_RTR_DATA;
+  CAN2_sFilterConfig.FilterActivation = CAN_FILTER_ENABLE; // Báº­t táº¯t filter
+  CAN2_sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
+  CAN2_sFilterConfig.SlaveStartFilterBank = 13;
+  CAN2_sFilterConfig.FilterBank = 19; // Filter Ä‘Æ°á»£c sá»­ dá»¥ng trong tiáº¿n trÃ¬nh
+  CAN2_sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  CAN2_sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+  CAN2_sFilterConfig.FilterIdHigh = tester_ID << 5;
+  CAN2_sFilterConfig.FilterIdLow = 0;
+  CAN2_sFilterConfig.FilterMaskIdHigh = tester_ID << 5;
+  CAN2_sFilterConfig.FilterMaskIdLow = 0;
   /* USER CODE END CAN2_Init 2 */
 
 }
@@ -375,14 +479,29 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : PA1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void readFromTester(uint8_t* req_tester, uint16_t len, uint8_t* data_tx) {
+  data_tx[0] = len;
+  uint8_t loopIndx;
+  for (loopIndx = 0; loopIndx < len; loopIndx++) {
+    data_tx[loopIndx+1] = req_tester[loopIndx];
+  }
+  while(loopIndx < 7) {
+    loopIndx++;
+    data_tx[loopIndx] = 0x55;
+  }
+}
 
 void MX_CAN1_Setup()
 {
@@ -394,7 +513,7 @@ void MX_CAN2_Setup()
 {
 	HAL_CAN_ConfigFilter(&hcan2, &CAN2_sFilterConfig);
 	HAL_CAN_Start(&hcan2);
-	HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO0_MSG_PENDING);
+	HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING);
 }
 
 void USART3_SendString(uint8_t *ch)
@@ -416,7 +535,7 @@ void PrintCANLog(uint16_t CANID, uint8_t * CAN_Frame)
 	USART3_SendString((uint8_t*)bufTime);
 	USART3_SendString((uint8_t*)" ");
 
-	sprintf(bufID,"%X",CANID);
+	sprintf(bufID,"%03X",CANID);
 	for(loopIndx = 0; loopIndx < 3; loopIndx ++)
 	{
 		bufsend[loopIndx]  = bufID[loopIndx];
@@ -439,12 +558,311 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	REQ_BUFFER[NumBytesReq] = REQ_1BYTE_DATA;
 	NumBytesReq++;
+
 	//REQ_BUFFER[7] = NumBytesReq;
 }
 void delay(uint16_t delay)
 {
 	HAL_Delay(delay);
 }
+
+
+//    if (GPIO_Pin == USER_Pin)
+//    {
+//        ECU_ID1=ECU_IDtmp1;
+//        ECU_ID2=ECU_IDtmp2;
+//
+//    }
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
+
+	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CAN1_pHeaderRx, CAN1_DATA_RX);
+	char buffer3[9] = "CAN1RX\n";
+	USART3_SendString((unsigned char *)buffer3);
+	fifo=0;
+	PrintCANLog(tester_ID, CAN1_DATA_RX);
+}
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
+
+	HAL_CAN_GetRxMessage(&hcan2, CAN_RX_FIFO1, &CAN2_pHeaderRx, CAN2_DATA_RX);
+	char buffer4[9] = "CAN2RX\n";
+	USART3_SendString((unsigned char *)buffer4);
+	fifo=1;
+	PrintCANLog(ECU_ID, CAN2_DATA_RX);
+}
+
+// Ham check
+
+void checkAndHandle_ECU() {
+	if (fifo == 1) {
+		fifo = 2;
+		uint8_t PCI = get_PCI(CAN2_DATA_RX[0]);
+		uint8_t LEN = get_size(CAN2_DATA_RX[0]);
+
+		if (PCI == 0x00) {
+			uint8_t SID = get_SID(CAN2_DATA_RX);
+			switch (SID) {
+			case 0x22:
+				if (LEN == 0x03) {
+
+					HandleSID22();
+
+
+				} else {
+					SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x13,SID);
+					HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX,&CAN2_pTxMailbox);
+				}
+				break;
+			case 0x27:
+				if (LEN == 0x06 || LEN == 0x02||LEN ==0x07)
+					HandleSID27();
+			 else {
+								SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x13, SID);
+								HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX,&CAN2_pTxMailbox);
+			 	 }
+				break;
+			case 0x2E:
+				if (enb2E==1)
+					HandleSID2E();
+				else {
+					SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x33,SID);
+					HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX,&CAN2_pTxMailbox);
+
+				}
+				break;
+			default:
+				break;
+			}
+		}
+	}
+
+}
+void checkAndHandle_tester() {
+	if (fifo == 0) {
+		fifo = 2;
+		uint8_t PCI = get_PCI(CAN1_DATA_RX[0]);
+		if (PCI == 0x00) {
+			uint8_t SID = get_SID(CAN1_DATA_RX);
+			switch (SID) {
+			case 0x62:
+				HandleSID62(CAN1_DATA_RX);
+				PrintCANLog(0xFF,CAN1_DATA_RX);
+				break;
+			case 0x67:
+				HandleSID67();
+				break;
+			case 0x6E:
+				HandleSID6E();
+				break;
+
+			default:
+				break;
+			}
+		}
+	}
+}
+
+
+//Ham xu ly
+void HandleSID2E() {
+
+	uint8_t LEN = get_size(CAN2_DATA_RX[0]);
+	if (LEN == 0X05) {
+		uint16_t DID = get_DID(CAN2_DATA_RX);
+		if (DID == 0x0123) {
+			WriteDataByIdentifierResponseFrame(CAN2_DATA_TX);
+
+			ECU_IDtmp=(CAN2_DATA_RX[4]<<8)|CAN2_DATA_RX[5];
+
+
+		} else {
+			SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x31, 0x2E);
+		}
+	}else{
+			SecurityAccessNegativeResponseMessage(CAN2_DATA_TX,0x13 ,0x2E);
+		}
+		HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX,
+				&CAN2_pTxMailbox);
+		delay(100);
+	}
+
+
+//Ham read
+void ReadDataByIdentifierRequestFrame(uint8_t data[]){
+	data[0] = 0x03;	// PCi, size
+	data[1] = 0x22;	// SID
+	data[2] = 0x01;	// DID
+	data[3] = 0x23;	// DID
+}
+void ReadDataByIdentifierResponseFrame(uint8_t data[]){
+	data[0] = 0x03;	// PCI
+	data[1] = 0x62;	// PSID
+	data[2] = 0x01;	// DID
+	data[3] = 0x23; // DID
+}
+void WriteDataByIdentifierRequestFrame(uint8_t data[]){
+	data[0] = 0x05;	// PCi, size
+	data[1] = 0x2E;	// SID
+	data[2] = 0x01;	// DID
+	data[3] = 0x23;	// DID
+  data[4] = 0xAA;
+  data[5] = 0xBB;
+}
+void WriteDataByIdentifierResponseFrame(uint8_t data[]){
+	data[0] = 0x03;	// PCi, size
+	data[1] = 0x6E;	// PSID
+	data[2] = 0x01;	// DID
+	data[3] = 0x23;	// DID
+}
+void securityAccessServiceSeedRequestFrame(uint8_t data[]){
+	data[0] = 0x02;	// PCI la 0, size la 2
+	data[1] = 0x27;	// service 27
+	data[2] = 0x01;	// request seed
+}
+void securityAccessServiceSeedResponseFrame(uint8_t data[]){
+	data[0] = 0x06;	// PCI la 0, size la 4
+	data[1] = 0x67;	// response $27 nen la $67
+	data[2] = 0x01;	// request seed
+	data[3] = generate_seed();	// Security Seed
+	CAN2_STORE_SEED[3] = data[3];
+	data[4] = generate_seed();	// Security Seed
+	CAN2_STORE_SEED[4] = data[4];
+	data[5] = generate_seed();	// Security Seed
+	CAN2_STORE_SEED[5] = data[5];
+	data[6] = generate_seed();	// Security Seed
+	CAN2_STORE_SEED[6] = data[6];
+  data[7] = 0x55;
+}
+void securityAccessSendKeyRequestFrame(uint8_t Tx_data[], uint8_t data[]){
+	Tx_data[0] = 0x07;				// PCI la 0, size la 4
+	Tx_data[1] = 0x27;				// response $27 nen la $67
+	Tx_data[2] = 0x02;				// response seed = request seed + 1
+  cal_key(Tx_data, data);
+  Tx_data[7] = 0x55;
+}
+void securityAccessSendKeyResponseFrame(uint8_t data[]){
+	data[0] = 0x02;	// PCI la 0, size la 2
+	data[1] = 0x67;	// response $27 nen la $67
+	data[2] = 0x02;	// response seed = request seed + 1
+  data[3] = 0x55;
+  data[4] = 0x55;
+  data[5] = 0x55;
+  data[6] = 0x55;
+  data[7] = 0x55;
+
+
+}
+void SecurityAccessNegativeResponseMessage(uint8_t data[], uint8_t flag_NRC,uint8_t SID){
+	data[0] = 0x03;	// PCI la 0, size la 3
+	data[1] = 0x7F;	// NRC code
+	data [2] = SID;
+	data [3]=flag_NRC;
+}
+void HandleSID22(){
+	uint16_t DID = get_DID(CAN2_DATA_RX);
+	if (DID == 0x0123){
+		ReadDataByIdentifierResponseFrame(CAN2_DATA_TX);
+
+	}
+	else{
+		SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x31,0x22);
+	}
+	HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX, &CAN2_pTxMailbox);
+	delay(100);
+}
+void HandleSID27() {
+	uint8_t SBF = get_sub_function(CAN2_DATA_RX);
+		if (SBF == 0x01) {
+			securityAccessServiceSeedResponseFrame(CAN2_DATA_TX);
+			check = 1;
+		} else if (SBF == 0x02&check==1) {
+			if (checkKey(CAN2_DATA_RX, CAN2_STORE_SEED) == 1) {
+				securityAccessSendKeyResponseFrame(CAN2_DATA_TX);
+
+			} else {
+				SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x35,0x27);// invalid key
+			}
+		}
+	HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX, &CAN2_pTxMailbox);
+	delay(100);
+}
+//
+void HandleSID6E(){
+	uint16_t DID = get_DID(CAN2_DATA_RX);
+	if (DID == 0x0123){
+		WriteDataByIdentifierResponseFrame(CAN2_DATA_TX);
+	}
+	else{
+		SecurityAccessNegativeResponseMessage(CAN2_DATA_TX, 0x31,0x6E);
+	}
+	HAL_CAN_AddTxMessage(&hcan2, &CAN2_pHeader, CAN2_DATA_TX, &CAN2_pTxMailbox);
+	delay(100);
+}
+void HandleSID67(){
+	uint8_t SBF = get_sub_function(CAN1_DATA_RX);
+	if (SBF == 0x01){
+		securityAccessSendKeyRequestFrame(CAN1_DATA_TX, CAN1_DATA_RX);
+		HAL_CAN_AddTxMessage(&hcan1, &CAN1_pHeader, CAN1_DATA_TX, &CAN1_pTxMailbox);
+		delay(100);
+	}else{
+		enb2E=1;
+	}
+}
+void HandleSID62(uint8_t data[]) {
+	data[0] = 0x05;
+	data[1] = 0x62;
+	data[2] = 0x01;
+	data[3] = 0x23;
+	data[4] = (ECU_ID>>8)&0XFF;
+	data[5] = ECU_ID&0XFF;
+	data[6] = 0x55;
+	data[7] = 0x55;
+}
+
+// Ham get
+uint8_t get_sub_function (uint8_t data[]) {
+  return data[2];
+}
+uint8_t generate_seed(){
+	return (uint8_t)(HAL_GetTick());
+}
+uint8_t checkKey (uint8_t data[], uint8_t CAN2_STORE_SEED[] ) {
+  uint8_t compareData[8];
+  cal_key(compareData, CAN2_STORE_SEED);
+  for (int loopIndx = 3; loopIndx < 8; loopIndx++) {
+    if (data[loopIndx] != CAN2_STORE_SEED[loopIndx]) return 0;
+  }
+  return 1;
+}
+uint8_t get_NRC(uint8_t data[]) {
+  return data[2];
+}
+uint8_t* cal_key(uint8_t Tx_data[], uint8_t data[]) {
+  Tx_data[3] = data[3] ^ data[4];
+  Tx_data[4] = data[4] + data[5];
+  Tx_data[5] = data[5] ^ data[6];
+  Tx_data[6] = data[6] + data[3];
+  return Tx_data;
+}
+uint16_t get_DID(uint8_t data[]) {
+  uint16_t temp = data[2];
+  temp <<= 8;
+  temp += data[3];
+  return temp;
+}
+uint8_t get_SID(uint8_t data[]) {
+  return data[1];
+}
+uint8_t get_size(uint8_t data) {
+  return data & 0x0F;
+}
+uint8_t get_PCI(uint8_t data) {
+  return data >> 4;
+}
+
+
+//void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+//}
 /* USER CODE END 4 */
 
 /**
@@ -478,3 +896,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
